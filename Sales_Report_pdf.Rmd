@@ -1,0 +1,1633 @@
+---
+title: "Sales Report pdf"
+author: "Andres Acevedo"
+date: "2/18/2021"
+output:
+  pdf_document:
+    toc: yes
+    toc_depth: '2'
+  html_document:
+    toc: yes
+    toc_depth: 1
+---
+
+```{r setup, include=FALSE, message = FALSE, warning = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+# Main
+library(tidyverse)
+library(lubridate)
+# Visualization
+library(plotly)
+library(ggplot2)
+library(formatR)
+library(rsconnect)
+library(shiny)
+```
+
+
+\newpage
+```{r , echo=FALSE,  message = FALSE, warning = FALSE}
+
+# INTERACTIVE PLOTS ----
+
+# GOAL: DEVELOP INTERACTIVE PLOTS FOR A SALES REPORT
+
+# LIBRARIES & DATA ----
+
+
+
+bikes_tbl      <- readRDS("00_Bike_data/bikes_tbl.rds")
+bikeshops_tbl  <- readRDS("00_Bike_data/bikeshops_tbl.rds")
+orderlines_tbl <- readRDS("00_Bike_data/orderlines_tbl.rds")
+
+bike_orderlines_tbl <- orderlines_tbl %>%
+    left_join(bikes_tbl,     by = c("product_id" = "bike_id")) %>%
+    left_join(bikeshops_tbl, by = c("customer_id" = "bikeshop_id")) %>%
+    
+    # Add the total price
+    mutate(total_price = price_euro * quantity)
+
+format_to_euro <- function(x, suffix = " €") {
+
+  scales::dollar(x,
+                 suffix       = suffix,
+                 prefix       = "",
+                 big.mark     = ".",
+                 decimal.mark = ",")
+}
+
+euro_format <- function(scale        = 1,
+                        prefix       = "",
+                        suffix       = " €",
+                        big.mark     = ".",
+                        decimal.mark = ",") {
+
+  scales::dollar_format(suffix       = suffix,
+                        prefix       = prefix,
+                        big.mark     = big.mark,
+                        decimal.mark = decimal.mark,
+                        scale        = scale)
+
+}
+
+```
+
+
+
+
+
+
+# Total Sales Charts
+
+## Quarterly Sales Trends
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+# 1.0 TOTAL SALES BY MONTH ----
+
+# 1.1 Preparing Time Series Data ----
+# Monthly
+
+total_sales_m_tbl_quarter <- bike_orderlines_tbl %>%
+
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+
+
+g1 <- total_sales_m_tbl_quarter %>%
+  ggplot(aes(x = date_rounded, y = total_sales)) +
+
+  # Geoms
+  geom_point() +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    title = "Total Sales",
+    y = "Revenue (EUR)",
+    x = ""
+  )
+
+g1
+
+```
+\newpage
+
+## Monthly Sales Trends
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+
+total_sales_m_tbl_month <- bike_orderlines_tbl %>%
+
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+
+
+
+
+
+g2 <- total_sales_m_tbl_month %>%
+  ggplot(aes(x = date_rounded, y = total_sales)) +
+
+  # Geoms
+  geom_point() +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    title = "Total Sales",
+    y = "Revenue (EUR)",
+    x = ""
+  )
+
+g2
+
+```
+
+\newpage
+
+## Weekly Sales Trends
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+
+total_sales_m_tbl_week <- bike_orderlines_tbl %>%
+
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+
+
+
+
+
+g3 <- total_sales_m_tbl_week %>%
+  ggplot(aes(x = date_rounded, y = total_sales)) +
+
+  # Geoms
+  geom_point() +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    title = "Total Sales",
+    y = "Revenue (EUR)",
+    x = ""
+  )
+
+g3
+
+```
+
+\newpage
+
+# Category Sales Charts
+
+## Road
+
+### Quarterly
+
+```{r, echo=FALSE, message = FALSE}
+
+#Table creation
+sales_total_race <- (bike_orderlines_tbl%>% 
+filter(category_1=="Road" , category_2=="Race"))
+
+sales_total_triathlon <- (bike_orderlines_tbl%>% 
+filter(category_1=="Road" , category_2=="Triathlon Bike"))
+
+sales_total_endurance <- (bike_orderlines_tbl%>% 
+filter(category_1=="Road" , category_2=="Endurance"))
+
+sales_total_cyclocross <- (bike_orderlines_tbl%>% 
+filter(category_1=="Road" , category_2=="Cyclocross"))
+
+
+
+```
+
+
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+
+sales_race_q <- sales_total_race %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_race_q <- sales_race_q %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#FF5733'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    title = "Sales By Category 2",
+    subtitle = "Race",
+    y = "",
+    x = ""
+  )
+
+g_race_q + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+```
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_triathlon_q <- sales_total_triathlon %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_triathlon_q <- sales_triathlon_q %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#18AD00'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Triathlon",
+    y = "",
+    x = ""
+  )
+
+g_triathlon_q + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_endurance_q <- sales_total_endurance %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_endurance_q <- sales_endurance_q %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#4EF9EA'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Endurance",
+    y = "",
+    x = ""
+  )
+
+g_endurance_q + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_cyclocross_q <- sales_total_cyclocross %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_cyclocross_q <- sales_cyclocross_q %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#941BD5'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Cyclocross",
+    y = "",
+    x = ""
+  )
+
+g_cyclocross_q + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+\newpage
+
+
+### Monthly
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+
+sales_race_m <- sales_total_race %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_race_m <- sales_race_m %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#FF5733'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    title = "Sales By Category 2",
+    subtitle = "Race",
+    y = "",
+    x = ""
+  )
+
+g_race_m + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+```
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_triathlon_m <- sales_total_triathlon %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_triathlon_m <- sales_triathlon_m %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#18AD00'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Triathlon",
+    y = "",
+    x = ""
+  )
+
+g_triathlon_m + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_endurance_m <- sales_total_endurance %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_endurance_m <- sales_endurance_m %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#4EF9EA'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Endurance",
+    y = "",
+    x = ""
+  )
+
+g_endurance_m + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_cyclocross_m <- sales_total_cyclocross %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_cyclocross_m <- sales_cyclocross_m %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#941BD5'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Cyclocross",
+    y = "",
+    x = ""
+  )
+
+g_cyclocross_m + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+\newpage
+
+
+### Weekly
+
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+
+sales_race_w <- sales_total_race %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_race_w <- sales_race_w %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#FF5733'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    title = "Sales By Category 2",
+    subtitle = "Race",
+    y = "",
+    x = ""
+  )
+
+g_race_w + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+```
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_triathlon_w <- sales_total_triathlon %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_triathlon_w <- sales_triathlon_w %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#18AD00'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Triathlon",
+    y = "",
+    x = ""
+  )
+
+g_triathlon_w + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_endurance_w <- sales_total_endurance %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_endurance_w <- sales_endurance_w %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#4EF9EA'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Endurance",
+    y = "",
+    x = ""
+  )
+
+g_endurance_w + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=2, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_cyclocross_w <- sales_total_cyclocross %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_cyclocross_w <- sales_cyclocross_w %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#941BD5'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Cyclocross",
+    y = "",
+    x = ""
+  )
+
+g_cyclocross_w + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+\newpage
+
+## Mountain
+
+### Quarterly
+
+```{r, echo=FALSE, message = FALSE}
+#Table creation
+sales_total_trail <- (bike_orderlines_tbl%>% 
+filter(category_1=="Mountain" , category_2=="Trail"))
+
+sales_total_cross_country <- (bike_orderlines_tbl%>% 
+filter(category_1=="Mountain" , category_2=="Cross-Country"))
+
+sales_total_enduro <- (bike_orderlines_tbl%>% 
+filter(category_1=="Mountain" , category_2=="Enduro"))
+
+sales_total_downhill <- (bike_orderlines_tbl%>% 
+filter(category_1=="Mountain" , category_2=="Downhill"))
+
+sales_total_dirt_jump <- (bike_orderlines_tbl%>% 
+filter(category_1=="Mountain" , category_2=="Dirt Jump"))
+
+sales_total_fat_bikes <- (bike_orderlines_tbl%>% 
+filter(category_1=="Mountain" , category_2=="Fat Bikes"))
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+
+sales_trail_q <- sales_total_trail %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_trail_q <- sales_trail_q %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#D5531B'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    title = "Sales By Category 2",
+    subtitle = "Trail",
+    y = "",
+    x = ""
+  )
+
+g_trail_q + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_cross_country_q <- sales_total_cross_country %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_cross_country_q <- sales_cross_country_q %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#D5AB1B'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Cross Country",
+    y = "",
+    x = ""
+  )
+
+g_cross_country_q + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_enduro_q <- sales_total_enduro %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_enduro_q <- sales_enduro_q %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#4CC243'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Enduro",
+    y = "",
+    x = ""
+  )
+
+g_enduro_q + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_downhill_q <- sales_total_downhill %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_downhill_q <- sales_downhill_q %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#43B5C2'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Downhill",
+    y = "",
+    x = ""
+  )
+
+g_downhill_q + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_dirt_jump_q <- sales_total_dirt_jump %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_dirt_jump_q <- sales_dirt_jump_q %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#2C4E93'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Dirt Jump",
+    y = "",
+    x = ""
+  )
+
+g_dirt_jump_q + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_fat_bikes_q <- sales_total_fat_bikes %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "quarter")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_fat_bikes_q <- sales_fat_bikes_q %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#642C93'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Fat Bikes",
+    y = "",
+    x = ""
+  )
+
+g_fat_bikes_q + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+\newpage
+
+### Montly
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+
+sales_trail_m <- sales_total_trail %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_trail_m <- sales_trail_m %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#D5531B'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    title = "Sales By Category 2",
+    subtitle = "Trail",
+    y = "",
+    x = ""
+  )
+
+g_trail_m + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_cross_country_m <- sales_total_cross_country %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_cross_country_m <- sales_cross_country_m %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#D5AB1B'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Cross Country",
+    y = "",
+    x = ""
+  )
+
+g_cross_country_m + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_enduro_m <- sales_total_enduro %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_enduro_m <- sales_enduro_m %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#4CC243'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Enduro",
+    y = "",
+    x = ""
+  )
+
+g_enduro_m + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_downhill_m <- sales_total_downhill %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_downhill_m <- sales_downhill_m %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#43B5C2'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Downhill",
+    y = "",
+    x = ""
+  )
+
+g_downhill_m + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_dirt_jump_m <- sales_total_dirt_jump %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_dirt_jump_m <- sales_dirt_jump_m %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#2C4E93'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Dirt Jump",
+    y = "",
+    x = ""
+  )
+
+g_dirt_jump_m + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_fat_bikes_m <- sales_total_fat_bikes %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "month")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_fat_bikes_m <- sales_fat_bikes_m %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#642C93'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Fat Bikes",
+    y = "",
+    x = ""
+  )
+
+g_fat_bikes_m + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+\newpage
+
+### Weekly
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+
+sales_trail_w <- sales_total_trail %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_trail_w <- sales_trail_w %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#D5531B'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    title = "Sales By Category 2",
+    subtitle = "Trail",
+    y = "",
+    x = ""
+  )
+
+g_trail_w + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_cross_country_w <- sales_total_cross_country %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_cross_country_w <- sales_cross_country_w %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#D5AB1B'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Cross Country",
+    y = "",
+    x = ""
+  )
+
+g_cross_country_w + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_enduro_w <- sales_total_enduro %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_enduro_w <- sales_enduro_w %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#4CC243'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Enduro",
+    y = "",
+    x = ""
+  )
+
+g_enduro_w + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_downhill_w <- sales_total_downhill %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_downhill_w <- sales_downhill_w %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#43B5C2'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Downhill",
+    y = "",
+    x = ""
+  )
+
+g_downhill_w + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_dirt_jump_w <- sales_total_dirt_jump %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_dirt_jump_w <- sales_dirt_jump_w %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#2C4E93'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Dirt Jump",
+    y = "",
+    x = ""
+  )
+
+g_dirt_jump_w + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
+
+```{r fig.width=7, fig.height=1.4, echo=FALSE, message = FALSE, warning = FALSE}
+
+sales_fat_bikes_w <- sales_total_fat_bikes %>%
+  select(order_date, total_price) %>%
+
+  mutate(date_rounded = floor_date(order_date, unit = "week")) %>%
+
+  group_by(date_rounded) %>%
+  summarise(total_sales = sum(total_price)) %>%
+  ungroup() %>%
+  mutate(label_text = str_glue("Sales: {format_to_euro(total_sales)}
+                                 Date: {date_rounded %>% format('%B %Y')}"))
+
+
+g_fat_bikes_w <- sales_fat_bikes_w %>%
+  ggplot(aes(x = date_rounded, y = total_sales, color = "#E69F00")) +
+
+  # Geoms
+  geom_point(color = 	'#000000') +
+  geom_smooth(method = "loess", span = 0.2) +
+
+  # Formatting
+  scale_color_manual(values=c('#642C93'))+
+  
+  # Convert scale to euro format
+  scale_y_continuous(labels = euro_format()) +
+  
+  # Make sure 0 will always be shown (even if the data is far away)
+  expand_limits(y = 0) +
+  
+  labs(
+    subtitle = "Fat Bikes",
+    y = "",
+    x = ""
+  )
+
+g_fat_bikes_w + theme(legend.position = "none", 
+                 axis.title.x=element_blank(),
+                 axis.text.x=element_blank(),
+                 axis.ticks.x=element_blank(),
+                 plot.subtitle = element_text(hjust = 0.5))
+
+```
